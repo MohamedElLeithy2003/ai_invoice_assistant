@@ -1,0 +1,159 @@
+from flask import Flask, render_template, request, send_from_directory
+from fpdf import FPDF
+import os
+import pandas as pd
+from datetime import datetime
+import re
+import numpy as np
+from sklearn.linear_model import LinearRegression
+from threading import Timer
+import webbrowser
+
+app = Flask(__name__)
+INVOICE_DIR = 'invoices'
+DATA_FILE = 'data/invoices_data.csv'
+
+os.makedirs(INVOICE_DIR, exist_ok=True)
+os.makedirs('data', exist_ok=True)
+
+if not os.path.exists(DATA_FILE):
+    pd.DataFrame(columns=['InvoiceID', 'Customer', 'Amount', 'Date']).to_csv(DATA_FILE, index=False)
+
+
+VALID_TOKENS = ["ABC123", "DEF456", "GHI789"]
+
+@app.before_request
+def check_token():
+    token = request.args.get('token')
+    if token not in VALID_TOKENS:
+        return "Unauthorized: Invalid or missing token", 401
+
+
+
+def parse_nl_invoice(text):
+    customer_match = re.search(r'for (.+)', text)
+    customer = customer_match.group(1).strip() if customer_match else 'Unknown'
+
+    pattern = r'(\d+)\s+([a-zA-Z ]+)\s+at\s+\$?(\d+\.?\d*)'
+    items = []
+    for m in re.findall(pattern, text):
+        qty = int(m[0])
+        name = m[1].strip()
+        price = float(m[2])
+        items.append((name, qty, price))
+    return customer, items
+
+
+def predict_revenue(df):
+    numeric_df = df[pd.to_numeric(df['Amount'], errors='coerce').notnull()]
+    if numeric_df.shape[0] < 3:
+        return None  # Not enough data yet
+
+    # Convert dates to timestamps
+    numeric_df['Timestamp'] = pd.to_datetime(numeric_df['Date']).map(datetime.timestamp)
+
+    # Normalize timestamps to start at zero
+    min_timestamp = numeric_df['Timestamp'].min()
+    numeric_df['Timestamp'] -= min_timestamp
+
+    X = numeric_df[['Timestamp']].values.reshape(-1, 1)
+    y = numeric_df['Amount'].values
+
+    model = LinearRegression().fit(X, y)
+
+    # Predict 30 days after the last invoice, normalized same as training
+    last_timestamp = numeric_df['Timestamp'].max()
+    next_time = np.array([[last_timestamp + 30 * 24 * 3600]])  # 30 days later
+    pred = model.predict(next_time)[0]
+
+    return round(max(float(pred), 0), 2)
+
+
+@app.route('/', methods=['GET', 'POST'])
+def index():
+    invoice_filename = None
+    suggestions = ''
+    predicted_revenue = None
+
+    df = pd.read_csv(DATA_FILE)
+
+    if request.method == 'POST':
+        use_nl = request.form.get('use_nl')
+        items_input = request.form.get('items')
+        apply_discount = request.form.get('apply_discount')
+
+        if use_nl:
+            customer, parsed_items = parse_nl_invoice(items_input)
+        else:
+            customer = request.form.get('customer')
+            parsed_items = []
+            for line in items_input.splitlines():
+                try:
+                    name, qty, price = line.split(',')
+                    parsed_items.append((name.strip(), int(qty.strip()), float(price.strip())))
+                except:
+                    continue
+
+        # Calculate total and apply smart discount
+        total = sum(qty * price for _, qty, price in parsed_items)
+        discount = 0
+        if apply_discount and total > 500:
+            discount = total * 0.05
+            total -= discount
+            suggestions = f"Smart discount applied: 5% off = {discount:.2f}"
+
+        predicted_revenue = predict_revenue(df)
+
+        # Generate PDF
+        invoice_id = f"INV-{int(datetime.now().timestamp())}"
+        pdf = FPDF()
+        pdf.add_page()
+        pdf.set_font("Arial", size=12)
+        pdf.cell(200, 10, f"Invoice ID: {invoice_id}", ln=True)
+        pdf.cell(200, 10, f"Customer: {customer}", ln=True)
+        pdf.ln(5)
+        pdf.cell(50, 10, "Item", border=1)
+        pdf.cell(30, 10, "Quantity", border=1)
+        pdf.cell(30, 10, "Price", border=1)
+        pdf.cell(30, 10, "Total", border=1)
+        pdf.ln()
+        for name, qty, price in parsed_items:
+            pdf.cell(50, 10, name, border=1)
+            pdf.cell(30, 10, str(qty), border=1)
+            pdf.cell(30, 10, f"{price:.2f}", border=1)
+            pdf.cell(30, 10, f"{qty * price:.2f}", border=1)
+            pdf.ln()
+
+        pdf.ln(5)
+        pdf.cell(200, 10, f"Total Amount: {total:.2f}", ln=True)
+        invoice_filename = f"{invoice_id}.pdf"
+        invoice_path = os.path.join(INVOICE_DIR, invoice_filename)
+        pdf.output(invoice_path)
+
+        # Log invoice
+        df = pd.concat([df, pd.DataFrame([{
+            "InvoiceID": invoice_id,
+            "Customer": customer,
+            "Amount": total,
+            "Date": datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        }])], ignore_index=True)
+        df.to_csv(DATA_FILE, index=False)
+
+    return render_template(
+        'index.html',
+        invoice_filename=invoice_filename,
+        suggestions=suggestions,
+        predicted_revenue=predicted_revenue
+    )
+
+
+@app.route('/invoices/<filename>')
+def download_invoice(filename):
+    path = os.path.join(INVOICE_DIR, filename)
+    if not os.path.exists(path):
+        return "Invoice not found", 404
+    return send_from_directory(os.path.abspath(INVOICE_DIR), filename)
+
+
+if __name__ == '__main__':
+    app.run(host="0.0.0.0", port=int(os.getenv("PORT", 5000)), debug=True)
