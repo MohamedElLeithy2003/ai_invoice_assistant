@@ -149,6 +149,10 @@ def index():
 
 @app.route('/invoices/<filename>')
 def download_invoice(filename):
+    token = request.args.get('token')
+    if token not in VALID_TOKENS:
+        return "Unauthorized: Invalid or missing token", 401
+        
     path = os.path.join(INVOICE_DIR, filename)
     if not os.path.exists(path):
         return "Invoice not found", 404
