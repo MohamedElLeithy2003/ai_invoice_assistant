@@ -5,75 +5,74 @@
     <title>Invoice & Accounting AI Assistant</title>
     <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
     <style>
-body {
-    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-    background-color: #1e1e1e;
-    color: #e0e0e0;
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    padding: 20px;
-}
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background-color: #1e1e1e;
+            color: #e0e0e0;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            padding: 20px;
+        }
 
-h1 {
-    color: #00ffd5;
-    margin-bottom: 20px;
-}
+        h1 {
+            color: #00ffd5;
+            margin-bottom: 20px;
+        }
 
-form {
-    background-color: #2a2a2a;
-    padding: 20px;
-    border-radius: 10px;
-    width: 500px;
-    box-shadow: 0 0 10px #00ffd5;
-}
+        form {
+            background-color: #2a2a2a;
+            padding: 20px;
+            border-radius: 10px;
+            width: 500px;
+            box-shadow: 0 0 10px #00ffd5;
+        }
 
-input[type="text"], textarea {
-    width: 100%;
-    padding: 8px;
-    margin-top: 5px;
-    margin-bottom: 15px;
-    border-radius: 5px;
-    border: 1px solid #555;
-    background-color: #1e1e1e;
-    color: #e0e0e0;
-}
+        input[type="text"], textarea, select {
+            width: 100%;
+            padding: 8px;
+            margin-top: 5px;
+            margin-bottom: 15px;
+            border-radius: 5px;
+            border: 1px solid #555;
+            background-color: #1e1e1e;
+            color: #e0e0e0;
+        }
 
-input[type="checkbox"] {
-    margin-right: 10px;
-}
+        input[type="checkbox"] {
+            margin-right: 10px;
+        }
 
-button {
-    background-color: #00ffd5;
-    color: #1e1e1e;
-    padding: 10px 20px;
-    border: none;
-    border-radius: 5px;
-    cursor: pointer;
-    font-weight: bold;
-}
+        button {
+            background-color: #00ffd5;
+            color: #1e1e1e;
+            padding: 10px 20px;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            font-weight: bold;
+        }
 
-button:hover {
-    background-color: #00c4aa;
-}
+        button:hover {
+            background-color: #00c4aa;
+        }
 
-.download-btn {
-    display: inline-block;
-    background-color: #00ffd5;
-    color: #1e1e1e;
-    padding: 10px 20px;
-    border-radius: 5px;
-    text-decoration: none;
-    font-weight: bold;
-    margin-top: 15px;
-    transition: background-color 0.3s;
-}
+        .download-btn {
+            display: inline-block;
+            background-color: #00ffd5;
+            color: #1e1e1e;
+            padding: 10px 20px;
+            border-radius: 5px;
+            text-decoration: none;
+            font-weight: bold;
+            margin-top: 15px;
+            transition: background-color 0.3s;
+        }
 
-.download-btn:hover {
-    background-color: #00c4aa;
-}
-</style>
-
+        .download-btn:hover {
+            background-color: #00c4aa;
+        }
+    </style>
 </head>
 <body>
     <h1>Invoice & Accounting AI Assistant</h1>
@@ -85,8 +84,15 @@ button:hover {
         <label>Invoice Items:</label><br>
         <textarea name="items" rows="6" cols="50" placeholder="Item1,2,50&#10;Item2,1,30 or type naturally if NL checked"></textarea><br><br>
 
+        <label>Select Currency:</label><br>
+        <select name="currency">
+            {% for cur in currencies %}
+                <option value="{{cur}}">{{cur}}</option>
+            {% endfor %}
+        </select><br><br>
+
         <input type="checkbox" id="apply_discount" name="apply_discount" value="yes">
-<label for="apply_discount">Apply smart discount (5% off if total &gt; 500)</label><br><br>
+        <label for="apply_discount">Apply smart discount (5% off if total &gt; 500)</label><br><br>
 
         <button type="submit">Generate Invoice</button>
     </form>
@@ -96,9 +102,9 @@ button:hover {
     {% endif %}
 
     {% if invoice_filename %}
-    <a href="{{ url_for('download_invoice', filename=invoice_filename) }}" target="_blank" class="download-btn">
-        Download Invoice
-    </a>
-{% endif %}
+        <a href="{{ invoice_url }}" target="_blank" class="download-btn">
+            Download Invoice
+        </a>
+    {% endif %}
 </body>
 </html>

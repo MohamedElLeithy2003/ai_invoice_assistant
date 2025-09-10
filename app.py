@@ -17,17 +17,9 @@ os.makedirs(INVOICE_DIR, exist_ok=True)
 os.makedirs('data', exist_ok=True)
 
 if not os.path.exists(DATA_FILE):
-    pd.DataFrame(columns=['InvoiceID', 'Customer', 'Amount', 'Date']).to_csv(DATA_FILE, index=False)
+    pd.DataFrame(columns=['InvoiceID', 'Customer', 'Amount', 'Currency', 'Date']).to_csv(DATA_FILE, index=False)
 
-
-VALID_TOKENS = ["ABC123", "DEF456", "GHI789"]
-
-@app.before_request
-def check_token():
-    token = request.args.get('token')
-    if token not in VALID_TOKENS:
-        return "Unauthorized: Invalid or missing token", 401
-
+CURRENCY_SYMBOLS = {'$': 'USD', '€': 'EUR', '£': 'GBP', '¥': 'JPY', 'A$': 'AUD', 'C$': 'CAD', 'CHF': 'CHF'}
 
 
 def parse_nl_invoice(text):
@@ -72,6 +64,7 @@ def predict_revenue(df):
 @app.route('/', methods=['GET', 'POST'])
 def index():
     invoice_filename = None
+    invoice_url = None
     suggestions = ''
     predicted_revenue = None
 
@@ -81,6 +74,8 @@ def index():
         use_nl = request.form.get('use_nl')
         items_input = request.form.get('items')
         apply_discount = request.form.get('apply_discount')
+        currency = request.form.get('currency', 'USD')
+        symbol = CURRENCY_SYMBOLS.get(currency, '$')
 
         if use_nl:
             customer, parsed_items = parse_nl_invoice(items_input)
@@ -111,6 +106,8 @@ def index():
         pdf.set_font("Arial", size=12)
         pdf.cell(200, 10, f"Invoice ID: {invoice_id}", ln=True)
         pdf.cell(200, 10, f"Customer: {customer}", ln=True)
+        pdf.cell(200, 10, f"Date: {datetime.now().strftime('%Y-%m-%d')}", ln=True)
+        pdf.cell(200, 10, f"Currency: {currency} ({symbol})", ln=True)
         pdf.ln(5)
         pdf.cell(50, 10, "Item", border=1)
         pdf.cell(30, 10, "Quantity", border=1)
@@ -120,12 +117,12 @@ def index():
         for name, qty, price in parsed_items:
             pdf.cell(50, 10, name, border=1)
             pdf.cell(30, 10, str(qty), border=1)
-            pdf.cell(30, 10, f"{price:.2f}", border=1)
-            pdf.cell(30, 10, f"{qty * price:.2f}", border=1)
+            pdf.cell(30, 10, f"{symbol} {price:.2f}", border=1)
+            pdf.cell(30, 10, f"{symbol} {qty * price:.2f}", border=1)
             pdf.ln()
 
         pdf.ln(5)
-        pdf.cell(200, 10, f"Total Amount: {total:.2f}", ln=True)
+        pdf.cell(200, 10, f"Total Amount: {symbol} {total:.2f}", ln=True)
         invoice_filename = f"{invoice_id}.pdf"
         invoice_path = os.path.join(INVOICE_DIR, invoice_filename)
         pdf.output(invoice_path)
@@ -135,23 +132,25 @@ def index():
             "InvoiceID": invoice_id,
             "Customer": customer,
             "Amount": total,
+            "Currency": currency,
             "Date": datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         }])], ignore_index=True)
         df.to_csv(DATA_FILE, index=False)
 
+        invoice_url = f"{request.url_root}invoices/{invoice_filename}"
+
     return render_template(
         'index.html',
         invoice_filename=invoice_filename,
+        invoice_url=invoice_url,
         suggestions=suggestions,
-        predicted_revenue=predicted_revenue
+        predicted_revenue=predicted_revenue,
+        currencies=CURRENCY_SYMBOLS.keys()
     )
 
 
 @app.route('/invoices/<filename>')
 def download_invoice(filename):
-    token = request.args.get('token')
-    if token not in VALID_TOKENS:
-        return "Unauthorized: Invalid or missing token", 401
         
     path = os.path.join(INVOICE_DIR, filename)
     if not os.path.exists(path):
