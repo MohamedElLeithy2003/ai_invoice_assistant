@@ -76,35 +76,32 @@
 </head>
 <body>
     <h1>Invoice & Accounting AI Assistant</h1>
-    <form method="post">
+ <form method="post">
+    <label>Customer Name:</label><br>
+    <input type="text" name="customer"><br><br>
 
-        <label>Customer Name:</label><br>
-        <input type="text" name="customer"><br><br>
+    <label>Invoice Items:</label><br>
+    <textarea name="items" rows="6" cols="50" placeholder="Item1,2,50&#10;Item2,1,30 or type naturally if NL checked"></textarea><br><br>
 
-        <label>Invoice Items:</label><br>
-        <textarea name="items" rows="6" cols="50" placeholder="Item1,2,50&#10;Item2,1,30 or type naturally if NL checked"></textarea><br><br>
+    <label>Select Currency:</label><br>
+    <select name="currency">
+        {% for cur in currencies %}
+            <option value="{{cur}}">{{cur}}</option>
+        {% endfor %}
+    </select><br><br>
 
-        <label>Select Currency:</label><br>
-        <select name="currency">
-            {% for cur in currencies %}
-                <option value="{{cur}}">{{cur}}</option>
-            {% endfor %}
-        </select><br><br>
+    <input type="checkbox" id="apply_discount" name="apply_discount" value="yes">
+    <label for="apply_discount">Apply smart discount (5% off if total &gt; 500)</label><br><br>
 
-        <input type="checkbox" id="apply_discount" name="apply_discount" value="yes">
-        <label for="apply_discount">Apply smart discount (5% off if total &gt; 500)</label><br><br>
-
-        <button type="submit">Generate Invoice</button>
-    </form>
-
-    {% if suggestions %}
-        <h3>{{ suggestions }}</h3>
-    {% endif %}
+    <button type="submit">Generate Invoice</button>
 
     {% if invoice_filename %}
-        <a href="{{ invoice_url }}" target="_blank" class="download-btn">
-            Download Invoice
-        </a>
+        <div style="margin-top: 15px; text-align: center;">
+            <a href="{{ invoice_url }}" target="_blank" class="download-btn">
+                Download Invoice
+            </a>
+        </div>
     {% endif %}
+</form>
 </body>
 </html>
