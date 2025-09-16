@@ -61,6 +61,36 @@ def predict_revenue(df):
     return round(max(float(pred), 0), 2)
 
 
+def apply_smart_discount(parsed_items, total):
+    discount = 0
+    suggestions = []
+
+    for name, qty, price in parsed_items:
+        if qty >= 50:
+            bulk_discount = qty * price * 0.10
+            discount += bulk_discount
+            suggestions.append(f"Bulk discount on {name}: 10% off = {bulk_discount:.2f}")
+            
+    if total > 2000:
+        tier_discount = total * 0.15
+        discount += tier_discount
+        suggestions.append(f"Tiered discount: 15% off = {tier_discount:.2f}")
+    elif total > 1000:
+        tier_discount = total * 0.10
+        discount += tier_discount
+        suggestions.append(f"Tiered discount: 10% off = {tier_discount:.2f}")
+    elif total > 500:
+        tier_discount = total * 0.05
+        discount += tier_discount
+        suggestions.append(f"Tiered discount: 5% off = {tier_discount:.2f}")
+        
+    rounded_total = round((total - discount) / 10) * 10
+    rounding_discount = (total - discount) - rounded_total
+    if rounding_discount > 0:
+        discount += rounding_discount
+        suggestions.append(f"Rounding discount: {rounding_discount:.2f}")
+    return total - discount, discount, suggestions
+
 @app.route('/', methods=['GET', 'POST'])
 def index():
     invoice_filename = None
@@ -91,11 +121,48 @@ def index():
 
         # Calculate total and apply smart discount
         total = sum(qty * price for _, qty, price in parsed_items)
-        discount = 0
-        if apply_discount and total > 500:
-            discount = total * 0.05
-            total -= discount
-            suggestions = f"Smart discount applied: 5% off = {discount:.2f}"
+        suggestions = ""
+
+        selected_discounts = request.form.getlist('discounts')
+
+        if "threshold" in selected_discounts:
+            threshold_option = request.form.get('threshold_option')
+            percent, limit=map(float, threshold_option.split('-'))
+            if total > limit:
+                discount_amount = total * (percent / 100)
+                total -= discount_amount
+                suggestions += f"Threshold discount applied: {percent}% off = {discount_amount:.2f}\n"
+        if "tiered" in selected_discounts:
+            if total > 2000:
+                tier_discount = total * 0.15
+            elif total > 1000:
+                tier_discount = total * 0.10
+            elif total > 500:
+                tier_discount = total * 0.05
+            else:
+                tier_discount = 0
+            if tier_discount > 0:
+                total -= tier_discount
+                suggestions += f"Tiered discount applied: -{tier_discount:.2f}\n"
+                
+        if "bulk" in selected_discounts:
+            if any(qty >= 50 for _, qty, _ in parsed_items):
+                bulk_discount = sum(qty * price * 0.10 for _, qty, price in parsed_items if qty >= 50)
+                total -= bulk_discount
+                suggestions += f"Bulk discount applied: -{bulk_discount:.2f}\n"
+                
+        if "rounding" in selected_discounts:
+            rounded_total = round(total, -1) - 1  # e.g. 501 -> 499
+            rounding_discount = total - rounded_total
+            if rounding_discount > 0:
+                total = rounded_total
+                suggestions += f"Smart rounding applied: -{rounding_discount:.2f}\n"
+
+        # Loyalty bonus
+        if "loyalty" in selected_discounts:
+            loyalty_discount = total * 0.03
+            total -= loyalty_discount
+            suggestions += f"Loyalty bonus applied: -{loyalty_discount:.2f}\n"
 
         predicted_revenue = predict_revenue(df)
 

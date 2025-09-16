@@ -72,6 +72,63 @@
         .download-btn:hover {
             background-color: #00c4aa;
         }
+        .discount-fieldset {
+            margin-top: 20px;
+            padding: 20px;
+            border: 1px solid #00ffd5;
+            border-radius: 12px;
+        }
+        .discount-fieldset legend {
+            color: #00ffd5;
+            font-weight: bold;
+            font-size: 1.1em;
+            padding: 0 10px;
+        }
+        .discount-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 15px;
+            margin-top: 15px;
+        }
+        .discount-card {
+            background-color: #1e1e1e;
+            padding: 10px;
+            border-radius: 8px;
+            border: 1px solid #333;
+        }
+        .discount-card:hover{
+            transform: translateY(-3px);
+            box-shadow: 0 0 10px rgba(0, 255, 213, 0.3);
+        }
+        .discount-card label {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            font-weight: bold;
+        }
+        .discount-title {
+            font-weight: bold;
+            margin-bottom: 5px;
+        }
+        .discount-desc {
+            margin-top: 5px;
+            font-size: 0.9em;
+            color: #aaa;
+        }
+
+        .discount-select {
+            margin-top: 10px;
+            width: 100%;
+            padding: 6px;
+            border-radius: 6px;
+            border: 1px solid #555;
+            background: #1e1e1e;
+            color: #e0e0e0;
+        }
+
+        .full-width {
+            grid-column: span 2;
+        }
     </style>
 </head>
 <body>
@@ -90,8 +147,62 @@
         {% endfor %}
     </select><br><br>
 
-    <input type="checkbox" id="apply_discount" name="apply_discount" value="yes">
-    <label for="apply_discount">Apply smart discount (5% off if total &gt; 500)</label><br><br>
+    <fieldset class="discount-fieldset">
+        <legend>AI-Powered Smart Discounts</legend>
+
+        <div class="discount-grid">
+
+            <!-- Threshold Discount -->
+            <div class="discount-card">
+                <label>
+                    <input type="checkbox" name="discounts" value="threshold">
+                    <span class="discount-title">Threshold Discount</span>
+                </label>
+                <select name="threshold_option" class="discount-select">
+                    <option value="5-500">5% off if total > 500</option>
+                    <option value="10-1000">10% off if total > 1000</option>
+                    <option value="15-2000">15% off if total > 2000</option>
+                </select>
+            </div>
+
+            <!-- Tiered Discounts -->
+            <div class="discount-card">
+                <label>
+                    <input type="checkbox" name="discounts" value="tiered">
+                    <span class="discount-title">Tiered Discounts</span>
+                </label>
+                <p class="discount-desc">AI decides bigger discounts for larger orders</p>
+            </div>
+
+            <!-- Bulk Item Discount -->
+            <div class="discount-card">
+                <label>
+                    <input type="checkbox" name="discounts" value="bulk">
+                    <span class="discount-title">Bulk Item Discounts</span>
+                </label>
+                <p class="discount-desc">Extra savings if item quantity is high</p>
+            </div>
+
+            <!-- Smart Rounding -->
+            <div class="discount-card">
+                <label>
+                    <input type="checkbox" name="discounts" value="rounding">
+                    <span class="discount-title">Smart Rounding</span>
+                </label>
+                <p class="discount-desc">Rounds totals to attractive numbers like 499 or 999</p>
+            </div>
+
+            <!-- Loyalty Bonus -->
+            <div class="discount-card full-width">
+                <label>
+                    <input type="checkbox" name="discounts" value="loyalty">
+                    <span class="discount-title">Loyalty Bonus</span>
+                </label>
+                <p class="discount-desc">Extra % off for returning customers</p>
+            </div>
+
+        </div>
+    </fieldset>
 
     <button type="submit">Generate Invoice</button>
 
