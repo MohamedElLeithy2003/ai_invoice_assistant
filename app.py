@@ -25,6 +25,7 @@ CURRENCY_SYMBOLS = {'$': 'USD', '€': 'EUR', '£': 'GBP', '¥': 'JPY', 'A$': 'A
 
 
 def verify_license(license_key):
+    license_key = license_key.strip()  # Remove leading/trailing spaces
     if os.environ.get("APP_ENV") == "development":
         return True
     url = "https://api.gumroad.com/v2/licenses/verify"
@@ -32,8 +33,18 @@ def verify_license(license_key):
     try:
         response = requests.post(url, data=payload, timeout=5)
         data = response.json()
-        return data.get("success", False)
-    except:
+
+        # DEBUG: log the full response for troubleshooting
+        print("Gumroad response:", data)
+
+        # Gumroad returns success in two places sometimes
+        if data.get("success") is True:
+            return True
+        elif "purchase" in data and data["purchase"].get("license") == license_key:
+            return True
+        return False
+    except Exception as e:
+        print("License verification error:", e)
         return False
 
 def parse_nl_invoice(text):
