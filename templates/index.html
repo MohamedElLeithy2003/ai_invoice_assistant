@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <title>Invoice & Accounting AI Assistant</title>
-    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
     <style>
         body {
             font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
@@ -14,21 +14,18 @@
             align-items: center;
             padding: 20px;
         }
-
         h1 {
             color: #00ffd5;
             margin-bottom: 20px;
         }
-
-        form {
+        .card {
             background-color: #2a2a2a;
             padding: 20px;
             border-radius: 10px;
-            width: 500px;
+            width: 600px;
             box-shadow: 0 0 10px #00ffd5;
         }
-
-        input[type="text"], textarea, select {
+        input, select, textarea {
             width: 100%;
             padding: 8px;
             margin-top: 5px;
@@ -38,11 +35,6 @@
             background-color: #1e1e1e;
             color: #e0e0e0;
         }
-
-        input[type="checkbox"] {
-            margin-right: 10px;
-        }
-
         button {
             background-color: #00ffd5;
             color: #1e1e1e;
@@ -52,11 +44,9 @@
             cursor: pointer;
             font-weight: bold;
         }
-
         button:hover {
             background-color: #00c4aa;
         }
-
         .download-btn {
             display: inline-block;
             background-color: #00ffd5;
@@ -68,7 +58,6 @@
             margin-top: 15px;
             transition: background-color 0.3s;
         }
-
         .download-btn:hover {
             background-color: #00c4aa;
         }
@@ -115,7 +104,6 @@
             font-size: 0.9em;
             color: #aaa;
         }
-
         .discount-select {
             margin-top: 10px;
             width: 100%;
@@ -125,85 +113,134 @@
             background: #1e1e1e;
             color: #e0e0e0;
         }
-
-        .full-width {
-            grid-column: span 2;
-        }
     </style>
 </head>
 <body>
-    <h1>Invoice & Accounting AI Assistant</h1>
- <form method="post">
-    <label>Customer Name:</label><br>
-    <input type="text" name="customer"><br><br>
+<h1>Invoice & Accounting AI Assistant</h1>
 
-    <label>Invoice Items:</label><br>
-    <textarea name="items" rows="6" cols="50" placeholder="Item1,2,50&#10;Item2,1,30 or type naturally if NL checked"></textarea><br><br>
+    <!-- License Verification Step -->
+    <div id="licenseStep" style="{% if license_verified %}display:none{% endif %}">
+    <div class="mb-3">
+        <label class="form-label">Enter your License Key</label>
+        <input type="text" id="licenseInput" class="form-control" required>
+    </div>
+    <button id="verifyLicenseBtn" class="btn btn-primary w-100">✅ Verify License</button>
+</div>
 
-    <label>Select Currency:</label><br>
-    <select name="currency">
-        {% for cur in currencies %}
-            <option value="{{cur}}">{{cur}}</option>
-        {% endfor %}
-    </select><br><br>
 
-    <fieldset class="discount-fieldset">
-        <legend>AI-Powered Smart Discounts</legend>
+    <!-- Invoice Form, hidden initially -->
+    <form id="invoiceForm" method="POST" style="{% if not license_verified %}display:none{% endif %}">
+    <input type="hidden" name="license" id="hiddenLicense" value="{{ request.form.get('license', '') }}">
 
-        <div class="discount-grid">
+        <label>Customer Name:</label><br>
+        <input type="text" name="customer"><br>
 
-            <!-- Threshold Discount -->
-            <div class="discount-card">
-                <label>
-                    <input type="checkbox" name="discounts" value="threshold">
-                    <span class="discount-title">Threshold Discount</span>
-                </label>
-                <select name="threshold_option" class="discount-select">
-                    <option value="5-500">5% off if total > 500</option>
-                    <option value="10-1000">10% off if total > 1000</option>
-                    <option value="15-2000">15% off if total > 2000</option>
-                </select>
+        <label>Invoice Items:</label><br>
+        <textarea name="items" rows="6" placeholder="Item1,2,50&#10;Item2,1,30 or type naturally if NL checked"></textarea><br>
+
+        <label>Select Currency:</label><br>
+        <select name="currency">
+            {% for cur in currencies %}
+                <option value="{{cur}}">{{cur}}</option>
+            {% endfor %}
+        </select><br>
+
+        <fieldset class="discount-fieldset">
+            <legend>AI-Powered Smart Discounts</legend>
+            <div class="discount-grid">
+
+                <!-- Threshold Discount -->
+                <div class="discount-card">
+                    <label>
+                        <input type="checkbox" name="discounts" value="threshold">
+                        <span class="discount-title">Threshold Discount</span>
+                    </label>
+                    <select name="threshold_option" class="discount-select">
+                        <option value="5-500">5% off if total > 500</option>
+                        <option value="10-1000">10% off if total > 1000</option>
+                        <option value="15-2000">15% off if total > 2000</option>
+                    </select>
+                </div>
+
+                <!-- Tiered Discounts -->
+                <div class="discount-card">
+                    <label>
+                        <input type="checkbox" name="discounts" value="tiered">
+                        <span class="discount-title">Tiered Discounts</span>
+                    </label>
+                    <p class="discount-desc">AI decides bigger discounts for larger orders</p>
+                </div>
+
+                <!-- Bulk Item Discount -->
+                <div class="discount-card">
+                    <label>
+                        <input type="checkbox" name="discounts" value="bulk">
+                        <span class="discount-title">Bulk Item Discounts</span>
+                    </label>
+                    <p class="discount-desc">Extra savings if item quantity is high</p>
+                </div>
+
+                <!-- Smart Rounding -->
+                <div class="discount-card">
+                    <label>
+                        <input type="checkbox" name="discounts" value="rounding">
+                        <span class="discount-title">Smart Rounding</span>
+                    </label>
+                    <p class="discount-desc">Rounds totals to attractive numbers like 499 or 999</p>
+                </div>
+
             </div>
+        </fieldset>
 
-            <!-- Tiered Discounts -->
-            <div class="discount-card">
-                <label>
-                    <input type="checkbox" name="discounts" value="tiered">
-                    <span class="discount-title">Tiered Discounts</span>
-                </label>
-                <p class="discount-desc">AI decides bigger discounts for larger orders</p>
+        <button type="submit" style="margin-top:15px;">Generate Invoice</button>
+
+        {% if invoice_filename %}
+            <div style="margin-top:15px; text-align:center;">
+                <a href="{{ invoice_url }}" target="_blank" class="download-btn">Download Invoice</a>
             </div>
+        {% endif %}
+    </form>
+</div>
 
-            <!-- Bulk Item Discount -->
-            <div class="discount-card">
-                <label>
-                    <input type="checkbox" name="discounts" value="bulk">
-                    <span class="discount-title">Bulk Item Discounts</span>
-                </label>
-                <p class="discount-desc">Extra savings if item quantity is high</p>
-            </div>
+<script>
+const licenseInput = document.getElementById('licenseInput');
+const verifyBtn = document.getElementById('verifyLicenseBtn');
+const licenseStep = document.getElementById('licenseStep');
+const invoiceForm = document.getElementById('invoiceForm');
+const hiddenLicense = document.getElementById('hiddenLicense');
 
-            <!-- Smart Rounding -->
-            <div class="discount-card">
-                <label>
-                    <input type="checkbox" name="discounts" value="rounding">
-                    <span class="discount-title">Smart Rounding</span>
-                </label>
-                <p class="discount-desc">Rounds totals to attractive numbers like 499 or 999</p>
-            </div>
+// License verification
+verifyBtn.addEventListener('click', async () => {
+    const license = licenseInput.value.trim();
+    if (!license) {
+        alert("Enter your license key!");
+        return;
+    }
 
-        </div>
-    </fieldset>
+    try {
+        const response = await fetch('/verify_license', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ license })
+        });
+        const data = await response.json();
 
-    <button type="submit">Generate Invoice</button>
+        if (data.success) {
+            alert("License valid! You can now fill the form.");
+            licenseStep.style.display = 'none';
+            invoiceForm.style.display = 'block';
+            hiddenLicense.value = license;
+        } else {
+            alert("Invalid license key. Check your email for the correct key.");
+        }
+    } catch (err) {
+        alert("Error verifying license. Try again later.");
+    }
+});
 
-    {% if invoice_filename %}
-        <div style="margin-top: 15px; text-align: center;">
-            <a href="{{ invoice_url }}" target="_blank" class="download-btn">
-                Download Invoice
-            </a>
-        </div>
-    {% endif %}
-</form>
+// No extra JS for form submission needed if it's normal Flask POST
+// Just remove the leftover idea-generator JS
+</script>
 </body>
 </html>
+

@@ -1,4 +1,4 @@
-from flask import Flask, render_template, request, send_from_directory
+from flask import Flask, render_template, request, send_from_directory, jsonify
 from fpdf import FPDF
 import os
 import pandas as pd
@@ -8,10 +8,12 @@ import numpy as np
 from sklearn.linear_model import LinearRegression
 from threading import Timer
 import webbrowser
+import requests
 
 app = Flask(__name__)
 INVOICE_DIR = 'invoices'
 DATA_FILE = 'data/invoices_data.csv'
+GUMROAD_PRODUCT_ID = "zqdzrv"
 
 os.makedirs(INVOICE_DIR, exist_ok=True)
 os.makedirs('data', exist_ok=True)
@@ -21,6 +23,18 @@ if not os.path.exists(DATA_FILE):
 
 CURRENCY_SYMBOLS = {'$': 'USD', '€': 'EUR', '£': 'GBP', '¥': 'JPY', 'A$': 'AUD', 'C$': 'CAD', 'CHF': 'CHF'}
 
+
+def verify_license(license_key):
+    if os.environ.get("APP_ENV") == "development":
+        return True
+    url = "https://api.gumroad.com/v2/licenses/verify"
+    payload = {"product_id": GUMROAD_PRODUCT_ID, "license_key": license_key}
+    try:
+        response = requests.post(url, data=payload, timeout=5)
+        data = response.json()
+        return data.get("success", False)
+    except:
+        return False
 
 def parse_nl_invoice(text):
     customer_match = re.search(r'for (.+)', text)
@@ -91,16 +105,31 @@ def apply_smart_discount(parsed_items, total):
         suggestions.append(f"Rounding discount: {rounding_discount:.2f}")
     return total - discount, discount, suggestions
 
+@app.route('/verify_license', methods=['POST'])
+def verify_license_route():
+    data = request.get_json()
+    license_key = data.get("license")
+    valid = verify_license(license_key)
+    return jsonify({"success": valid})
+    
+
 @app.route('/', methods=['GET', 'POST'])
 def index():
     invoice_filename = None
     invoice_url = None
     suggestions = ''
     predicted_revenue = None
+    license_verified = False  
 
     df = pd.read_csv(DATA_FILE)
 
     if request.method == 'POST':
+        license_key = request.form.get("license")
+        if license_key and verify_license(license_key):
+            license_verified = True 
+        else:
+            return "Invalid license key. Please enter a valid license.", 403
+
         use_nl = request.form.get('use_nl')
         items_input = request.form.get('items')
         apply_discount = request.form.get('apply_discount')
@@ -119,54 +148,42 @@ def index():
                 except:
                     continue
 
-        # Calculate total and apply smart discount
+        # Discounts
         total = sum(qty * price for _, qty, price in parsed_items)
         suggestions = ""
-
         selected_discounts = request.form.getlist('discounts')
-
+        # Apply threshold, tiered, bulk, rounding discounts here
         if "threshold" in selected_discounts:
             threshold_option = request.form.get('threshold_option')
-            percent, limit=map(float, threshold_option.split('-'))
+            percent, limit = map(float, threshold_option.split('-'))
             if total > limit:
                 discount_amount = total * (percent / 100)
                 total -= discount_amount
                 suggestions += f"Threshold discount applied: {percent}% off = {discount_amount:.2f}\n"
         if "tiered" in selected_discounts:
+            tier_discount = 0
             if total > 2000:
                 tier_discount = total * 0.15
             elif total > 1000:
                 tier_discount = total * 0.10
             elif total > 500:
                 tier_discount = total * 0.05
-            else:
-                tier_discount = 0
             if tier_discount > 0:
                 total -= tier_discount
                 suggestions += f"Tiered discount applied: -{tier_discount:.2f}\n"
-                
         if "bulk" in selected_discounts:
-            if any(qty >= 50 for _, qty, _ in parsed_items):
-                bulk_discount = sum(qty * price * 0.10 for _, qty, price in parsed_items if qty >= 50)
+            bulk_discount = sum(qty*price*0.10 for _, qty, price in parsed_items if qty>=50)
+            if bulk_discount > 0:
                 total -= bulk_discount
                 suggestions += f"Bulk discount applied: -{bulk_discount:.2f}\n"
-                
         if "rounding" in selected_discounts:
-            rounded_total = round(total, -1) - 1  # e.g. 501 -> 499
+            rounded_total = round(total, -1) - 1
             rounding_discount = total - rounded_total
             if rounding_discount > 0:
                 total = rounded_total
                 suggestions += f"Smart rounding applied: -{rounding_discount:.2f}\n"
 
-        # Loyalty bonus
-        if "loyalty" in selected_discounts:
-            loyalty_discount = total * 0.03
-            total -= loyalty_discount
-            suggestions += f"Loyalty bonus applied: -{loyalty_discount:.2f}\n"
-
         predicted_revenue = predict_revenue(df)
-
-        # Generate PDF
         invoice_id = f"INV-{int(datetime.now().timestamp())}"
         pdf = FPDF()
         pdf.add_page()
@@ -177,7 +194,7 @@ def index():
         pdf.cell(200, 10, f"Currency: {currency} ({symbol})", ln=True)
         pdf.ln(5)
         pdf.cell(50, 10, "Item", border=1)
-        pdf.cell(30, 10, "Quantity", border=1)
+        pdf.cell(30, 10, "Qty", border=1)
         pdf.cell(30, 10, "Price", border=1)
         pdf.cell(30, 10, "Total", border=1)
         pdf.ln()
@@ -185,16 +202,15 @@ def index():
             pdf.cell(50, 10, name, border=1)
             pdf.cell(30, 10, str(qty), border=1)
             pdf.cell(30, 10, f"{symbol} {price:.2f}", border=1)
-            pdf.cell(30, 10, f"{symbol} {qty * price:.2f}", border=1)
+            pdf.cell(30, 10, f"{symbol} {qty*price:.2f}", border=1)
             pdf.ln()
-
         pdf.ln(5)
         pdf.cell(200, 10, f"Total Amount: {symbol} {total:.2f}", ln=True)
+
         invoice_filename = f"{invoice_id}.pdf"
         invoice_path = os.path.join(INVOICE_DIR, invoice_filename)
         pdf.output(invoice_path)
 
-        # Log invoice
         df = pd.concat([df, pd.DataFrame([{
             "InvoiceID": invoice_id,
             "Customer": customer,
@@ -212,9 +228,9 @@ def index():
         invoice_url=invoice_url,
         suggestions=suggestions,
         predicted_revenue=predicted_revenue,
-        currencies=CURRENCY_SYMBOLS.keys()
+        currencies=CURRENCY_SYMBOLS.keys(),
+        license_verified=license_verified
     )
-
 
 @app.route('/invoices/<filename>')
 def download_invoice(filename):
