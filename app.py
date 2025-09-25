@@ -13,7 +13,7 @@ import requests
 app = Flask(__name__)
 INVOICE_DIR = 'invoices'
 DATA_FILE = 'data/invoices_data.csv'
-GUMROAD_PRODUCT_ID = "zqdzrv"
+GUMROAD_PRODUCT_ID = "UPgBmp1Q1kpOG5H3ETLxyA=="
 
 os.makedirs(INVOICE_DIR, exist_ok=True)
 os.makedirs('data', exist_ok=True)
