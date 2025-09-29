@@ -1,5 +1,6 @@
 from flask import Flask, render_template, request, send_from_directory, jsonify
 from fpdf import FPDF
+from fpdf.enums import XPos, YPos
 import os
 import pandas as pd
 from datetime import datetime
@@ -9,6 +10,8 @@ from sklearn.linear_model import LinearRegression
 from threading import Timer
 import webbrowser
 import requests
+from werkzeug.utils import secure_filename
+from PIL import Image
 
 app = Flask(__name__)
 INVOICE_DIR = 'invoices'
@@ -135,18 +138,44 @@ def index():
     df = pd.read_csv(DATA_FILE)
 
     if request.method == 'POST':
+        # --- License check ---
         license_key = request.form.get("license")
         if license_key and verify_license(license_key):
-            license_verified = True 
+            license_verified = True
         else:
             return "Invalid license key. Please enter a valid license.", 403
 
+        # --- Basic form fields ---
         use_nl = request.form.get('use_nl')
         items_input = request.form.get('items')
-        apply_discount = request.form.get('apply_discount')
         currency = request.form.get('currency', 'USD')
         symbol = CURRENCY_SYMBOLS.get(currency, '$')
 
+        # --- Logo upload + safe conversion ---
+        logo_file = request.files.get('logo')
+        logo_path = None
+        if logo_file and logo_file.filename != '':
+            filename = secure_filename(logo_file.filename)
+            raw_path = os.path.join(app.root_path, 'data', filename)
+            logo_file.save(raw_path)
+
+            try:
+                # Open image with PIL
+                img = Image.open(raw_path)
+                img = img.convert("RGB")  # Ensure RGB
+                safe_logo_path = raw_path.rsplit('.', 1)[0] + "_safe.jpg"
+                img.save(safe_logo_path, "JPEG")
+                logo_path = safe_logo_path
+
+                print(f"[LOGO] Uploaded and converted logo saved at: {logo_path}")
+                if not os.path.exists(logo_path):
+                    raise Exception("Converted logo file not found!")
+
+            except Exception as e:
+                print(f"[LOGO][ERROR] Logo conversion failed: {e}")
+                logo_path = None
+
+        # --- Parse invoice items ---
         if use_nl:
             customer, parsed_items = parse_nl_invoice(items_input)
         else:
@@ -156,21 +185,26 @@ def index():
                 try:
                     name, qty, price = line.split(',')
                     parsed_items.append((name.strip(), int(qty.strip()), float(price.strip())))
-                except:
-                    continue
+                except Exception as e:
+                    print(f"[ITEM PARSE][ERROR] Skipped line '{line}': {e}")
 
-        # Discounts
+        # --- Subtotal ---
         total = sum(qty * price for _, qty, price in parsed_items)
-        suggestions = ""
+
+        # --- Discounts ---
         selected_discounts = request.form.getlist('discounts')
-        # Apply threshold, tiered, bulk, rounding discounts here
+        suggestions_list = []
+
         if "threshold" in selected_discounts:
-            threshold_option = request.form.get('threshold_option')
-            percent, limit = map(float, threshold_option.split('-'))
-            if total > limit:
-                discount_amount = total * (percent / 100)
-                total -= discount_amount
-                suggestions += f"Threshold discount applied: {percent}% off = {discount_amount:.2f}\n"
+            threshold_option = request.form.get('threshold_option', '0-0').replace(" ", "")
+            try:
+                percent, limit = map(float, threshold_option.split('-'))
+                if total > limit:
+                    discount_amount = total * (percent / 100)
+                    total -= discount_amount
+                    suggestions_list.append(f"Threshold discount: -{symbol}{discount_amount:.2f}")
+            except Exception as e:
+                print(f"[DISCOUNT][THRESHOLD] Error parsing threshold: {e}")
         if "tiered" in selected_discounts:
             tier_discount = 0
             if total > 2000:
@@ -181,29 +215,49 @@ def index():
                 tier_discount = total * 0.05
             if tier_discount > 0:
                 total -= tier_discount
-                suggestions += f"Tiered discount applied: -{tier_discount:.2f}\n"
+                suggestions_list.append(f"Tiered discount: -{symbol}{tier_discount:.2f}")
+
         if "bulk" in selected_discounts:
-            bulk_discount = sum(qty*price*0.10 for _, qty, price in parsed_items if qty>=50)
+            bulk_discount = sum(qty * price * 0.10 for _, qty, price in parsed_items if qty >= 50)
             if bulk_discount > 0:
                 total -= bulk_discount
-                suggestions += f"Bulk discount applied: -{bulk_discount:.2f}\n"
-        if "rounding" in selected_discounts:
-            rounded_total = round(total, -1) - 1
-            rounding_discount = total - rounded_total
-            if rounding_discount > 0:
-                total = rounded_total
-                suggestions += f"Smart rounding applied: -{rounding_discount:.2f}\n"
+                suggestions_list.append(f"Bulk discount: -{symbol}{bulk_discount:.2f}")
 
+        if "rounding" in selected_discounts:
+            rounded_total = round(total, -1)
+            rounding_discount = total - rounded_total
+            total = rounded_total  # always apply rounding
+            if abs(rounding_discount) > 0.01:
+                suggestions_list.append(f"Smart Rounding: -{symbol}{rounding_discount:.2f}")
+        manual_discount = request.form.get('manual_discount')
+        if manual_discount:
+            try:
+                manual_discount_val = float(manual_discount)
+                if manual_discount_val > 0:
+                    total -= manual_discount_val
+                    suggestions_list.append(f"Manual discount: -{symbol}{manual_discount_val:.2f}")
+            except ValueError:
+                print(f"[DISCOUNT][ERROR] Invalid manual discount: {manual_discount}")
+
+        suggestions = "\n".join(suggestions_list)
+
+        # --- Predict revenue ---
         predicted_revenue = predict_revenue(df)
+
+        # --- Invoice ID ---
         invoice_id = f"INV-{int(datetime.now().timestamp())}"
+
+        # --- PDF Generation ---
         pdf = FPDF()
         pdf.add_page()
         pdf.set_font("Arial", size=12)
+
         pdf.cell(200, 10, f"Invoice ID: {invoice_id}", ln=True)
         pdf.cell(200, 10, f"Customer: {customer}", ln=True)
         pdf.cell(200, 10, f"Date: {datetime.now().strftime('%Y-%m-%d')}", ln=True)
         pdf.cell(200, 10, f"Currency: {currency} ({symbol})", ln=True)
         pdf.ln(5)
+
         pdf.cell(50, 10, "Item", border=1)
         pdf.cell(30, 10, "Qty", border=1)
         pdf.cell(30, 10, "Price", border=1)
@@ -213,15 +267,22 @@ def index():
             pdf.cell(50, 10, name, border=1)
             pdf.cell(30, 10, str(qty), border=1)
             pdf.cell(30, 10, f"{symbol} {price:.2f}", border=1)
-            pdf.cell(30, 10, f"{symbol} {qty*price:.2f}", border=1)
+            pdf.cell(30, 10, f"{symbol} {qty * price:.2f}", border=1)
             pdf.ln()
         pdf.ln(5)
+
+        if suggestions_list:
+            pdf.cell(200, 10, "Applied Discounts:", ln=True)
+            for suggestion in suggestions_list:
+                pdf.cell(200, 10, suggestion, ln=True)
+
         pdf.cell(200, 10, f"Total Amount: {symbol} {total:.2f}", ln=True)
 
         invoice_filename = f"{invoice_id}.pdf"
         invoice_path = os.path.join(INVOICE_DIR, invoice_filename)
         pdf.output(invoice_path)
 
+        # --- Save invoice to CSV ---
         df = pd.concat([df, pd.DataFrame([{
             "InvoiceID": invoice_id,
             "Customer": customer,
@@ -233,6 +294,7 @@ def index():
 
         invoice_url = f"{request.url_root}invoices/{invoice_filename}"
 
+    # --- Render page (GET or POST) ---
     return render_template(
         'index.html',
         invoice_filename=invoice_filename,
