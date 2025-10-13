@@ -26,6 +26,16 @@ if not os.path.exists(DATA_FILE):
 
 CURRENCY_SYMBOLS = {'$': 'USD', '€': 'EUR', '£': 'GBP', '¥': 'JPY', 'A$': 'AUD', 'C$': 'CAD', 'CHF': 'CHF'}
 
+TAX_RATES = {
+    'none': {'rate': 0, 'label': 'No Tax'},
+    'vat_standard': {'rate': 20, 'label': 'VAT (20% - UK/EU Standard)'},
+    'vat_reduced': {'rate': 10, 'label': 'VAT (10% - Reduced Rate)'},
+    'sales_tax': {'rate': 8.5, 'label': 'Sales Tax (8.5% - US Average)'},
+    'gst': {'rate': 15, 'label': 'GST (15% - AU/NZ)'},
+    'custom': {'rate': 0, 'label': 'Custom Rate'}
+    }
+
+
 
 def verify_license(license_key):
     license_key = license_key.strip()  # Remove leading/trailing spaces
@@ -189,7 +199,8 @@ def index():
                     print(f"[ITEM PARSE][ERROR] Skipped line '{line}': {e}")
 
         # --- Subtotal ---
-        total = sum(qty * price for _, qty, price in parsed_items)
+        subtotal = sum(qty * price for _, qty, price in parsed_items)
+        total = subtotal
 
         # --- Discounts ---
         selected_discounts = request.form.getlist('discounts')
@@ -241,6 +252,29 @@ def index():
 
         suggestions = "\n".join(suggestions_list)
 
+        # --- Tax calculation ---
+        include_tax = request.form.get('include_tax')
+        tax_rate = 0
+        tax_amount = 0
+
+        tax_label = "No Tax"
+
+        if include_tax:
+            tax_option = request.form.get('tax_option', 'none')
+
+            if tax_option == 'custom':
+                try:
+                    tax_rate = float(request.form.get('custom_tax_rate', 0))
+                    tax_label = f"Custom Tax ({tax_rate}%)"
+                except ValueError:
+                    tax_rate = 0
+            elif tax_option in TAX_RATES:
+                tax_rate = TAX_RATES[tax_option]['rate']
+                tax_label = TAX_RATES[tax_option]['label']
+            if tax_rate > 0:
+                tax_amount = total * (tax_rate / 100)
+                total += tax_amount
+
         # --- Predict revenue ---
         predicted_revenue = predict_revenue(df)
 
@@ -271,11 +305,22 @@ def index():
             pdf.ln()
         pdf.ln(5)
 
+        # Show subtotal before discounts and tax
+        pdf.cell(200, 10, f"Subtotal: {symbol} {subtotal:.2f}", ln=True)
+
         if suggestions_list:
             pdf.cell(200, 10, "Applied Discounts:", ln=True)
             for suggestion in suggestions_list:
                 pdf.cell(200, 10, suggestion, ln=True)
+            pdf.cell(200, 10, f"After Discounts: {symbol} {(total - tax_amount):.2f}", ln=True)
 
+        # Show tax if applicable
+        if tax_amount > 0:
+            pdf.ln(3)
+            pdf.cell(200, 10, f"{tax_label}: {symbol} {tax_amount:.2f}", ln=True)
+
+        pdf.ln(3)
+        pdf.set_font("Arial", 'B', size=14)
         pdf.cell(200, 10, f"Total Amount: {symbol} {total:.2f}", ln=True)
 
         invoice_filename = f"{invoice_id}.pdf"
@@ -288,7 +333,9 @@ def index():
             "Customer": customer,
             "Amount": total,
             "Currency": currency,
-            "Date": datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+            "Date": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+            "Tax": tax_amount,
+            "TaxRate": tax_rate
         }])], ignore_index=True)
         df.to_csv(DATA_FILE, index=False)
 
@@ -302,7 +349,8 @@ def index():
         suggestions=suggestions,
         predicted_revenue=predicted_revenue,
         currencies=CURRENCY_SYMBOLS.keys(),
-        license_verified=license_verified
+        license_verified=license_verified,
+        tax_rates=TAX_RATES
     )
 
 @app.route('/invoices/<filename>')
