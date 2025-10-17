@@ -163,6 +163,9 @@
             <a href="{{ invoice_url }}" target="_blank" class="download-btn">Download Invoice</a>
         </div>
     {% endif %}
+    <label for="company">Company Name:</label><br>
+    <input type="text" name="company" id="company" required value="{{ request.form.get('company', '') }}"><br>
+    
 
     <input type="hidden" name="license" id="hiddenLicense" value="{{ request.form.get('license', '') }}">
 

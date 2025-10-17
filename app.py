@@ -160,6 +160,7 @@ def index():
         items_input = request.form.get('items')
         currency = request.form.get('currency', 'USD')
         symbol = CURRENCY_SYMBOLS.get(currency, '$')
+        company = request.form.get('company', '').strip()
 
         # --- Logo upload + safe conversion ---
         logo_file = request.files.get('logo')
@@ -287,6 +288,8 @@ def index():
         pdf.set_font("Arial", size=12)
 
         pdf.cell(200, 10, f"Invoice ID: {invoice_id}", ln=True)
+        if company:
+            pdf.cell(200, 10, f"Company: {company}", ln=True)
         pdf.cell(200, 10, f"Customer: {customer}", ln=True)
         pdf.cell(200, 10, f"Date: {datetime.now().strftime('%Y-%m-%d')}", ln=True)
         pdf.cell(200, 10, f"Currency: {currency} ({symbol})", ln=True)
@@ -330,6 +333,7 @@ def index():
         # --- Save invoice to CSV ---
         df = pd.concat([df, pd.DataFrame([{
             "InvoiceID": invoice_id,
+            "Company": company,
             "Customer": customer,
             "Amount": total,
             "Currency": currency,
